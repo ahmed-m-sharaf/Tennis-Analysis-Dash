@@ -8,8 +8,7 @@ from utils import get_center_of_bbox, measure_distance
 class PlayerTracker:
     def __init__(self, model_path):
         self.model = YOLO(model_path)
-        device = 'cpu'
-        self.model.to(device)
+
     
     def choose_and_filter_players(self, player_detections, court_keypoints):
         player_detections_first_frame = player_detections[0]
