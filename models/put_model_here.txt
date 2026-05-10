@@ -1,1 +1,13 @@
+# Model Weights
 
+This directory is tracked by git but the large `.pt` / `.pth` weight files are excluded via `.gitignore`.
+
+## Required Files
+
+| Filename               | Description                          | Download |
+|------------------------|--------------------------------------|----------|
+| `yolov8x.pt`           | YOLOv8x player detection backbone    | Auto-downloaded by Ultralytics on first run |
+| `yolo5_last.pt`        | YOLOv5 ball detection (fine-tuned)   | [Google Drive](https://drive.google.com/file/d/1UZwiG1jkWgce9lNhxJ2L0NVjX1vGM05U/view?usp=sharing) |
+| `keypoints_model.pth`  | Court keypoint regression (ResNet)   | [Google Drive](https://drive.google.com/file/d/1QrTOF1ToQ4plsSZbkBs3zOLkVt3MBlta/view?usp=sharing) |
+
+Place all three files in this `models/` directory before running `python app.py`.

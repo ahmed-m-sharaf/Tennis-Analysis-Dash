@@ -1,29 +1,45 @@
-from ultralytics import YOLO
-import cv2
 import pickle
 import sys
+
+import cv2
+from ultralytics import YOLO
+
 sys.path.append("..")  # Add parent directory to sys.path
 from utils import get_center_of_bbox, measure_distance
+
 
 class PlayerTracker:
     def __init__(self, model_path):
         self.model = YOLO(model_path)
+        import torch
+        if torch.backends.mps.is_available():
+            device = 'mps'
+        elif torch.cuda.is_available():
+            device = 'cuda'
+        else:
+            device = 'cpu'
+        self.model.to(device)
+        print(f"[PlayerTracker] Running on device: {device}")
 
-    
     def choose_and_filter_players(self, player_detections, court_keypoints):
         player_detections_first_frame = player_detections[0]
-        chossen_player = self.choose_players(court_keypoints, player_detections_first_frame)
+        chosen_players = self.choose_players(court_keypoints, player_detections_first_frame)
         filtered_player_detections = []
         for player_dict in player_detections:
-            filtered_player_dict = {track_id: box for track_id, box in player_dict.items() if track_id in chossen_player}
+            filtered_player_dict = {}
+            for track_id, box in player_dict.items():
+                if track_id in chosen_players:
+                    # Map the closest player to ID 1, second closest to ID 2
+                    mapped_id = 1 if track_id == chosen_players[0] else 2
+                    filtered_player_dict[mapped_id] = box
             filtered_player_detections.append(filtered_player_dict)
         return filtered_player_detections
-    
+
     def choose_players(self, court_keypoints, player_dict):
         distances = []
         for track_id, box in player_dict.items():
             player_center = get_center_of_bbox(box)
-    
+
             min_distance = float('inf')
             for i in range(0, len(court_keypoints), 2):
                 court_point = (court_keypoints[i], court_keypoints[i+1])
@@ -31,22 +47,22 @@ class PlayerTracker:
                 if distance < min_distance:
                     min_distance = distance
             distances.append((track_id, min_distance))
-        
-        # sort distances in asc order 
+
+        # sort distances in asc order
         distances.sort(key=lambda x: x[1])
-        
+
         # choose 2 players
         chosen_players = [distances[0][0], distances[1][0]]  # track_ids of the closest 2 players
         return chosen_players
-        
+
     # loop for all frames
     def detect_frames(self, frames, read_from_stubs=False, stub_path=None):
         player_detections = []
-        
+
         if read_from_stubs and stub_path is not None:
             with open(stub_path, 'rb') as f:
                 return pickle.load(f)
-            
+
         for frame in frames:
             player_dict = self.detect_frame(frame)
             player_detections.append(player_dict)
@@ -54,7 +70,7 @@ class PlayerTracker:
         if stub_path is not None:
             with open(stub_path, 'wb') as f:
                 pickle.dump(player_detections, f)
-        
+
         return player_detections
 
     # detect only one frame
@@ -64,21 +80,37 @@ class PlayerTracker:
         id_names_dict = results.names
         player_dict = {}
         for box in results.boxes:
-            track_id = int(box.id.tolist()[0])  
+            track_id = int(box.id.tolist()[0])
             result = box.xyxy.tolist()[0]  # [x1, y1, x2, y2]
             class_id = int(box.cls.tolist()[0])
             class_name = id_names_dict[class_id]
             if class_name == "person":  # players
-                player_dict[track_id] = result # box coordinates for each player 
+                player_dict[track_id] = result # box coordinates for each player
         return player_dict
 
     # draw bounding boxes on the frame
     def draw_boxes(self, frames, player_detections):
         output_video_frames = []
         for frame, player_dict in zip(frames, player_detections):
-            for track_id, box in player_dict.items():
-                x1, y1, x2, y2 = map(int, box) # convert string into int
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(frame, f"Player : {track_id}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            output_video_frames.append(frame)
+            output_video_frames.append(self.draw_boxes_single_frame(frame, player_dict))
         return output_video_frames
+
+    def draw_boxes_single_frame(self, frame, player_dict):
+        # Professional Colors (BGR)
+        COLOR_P1 = (117, 158, 29)  # Emerald
+        COLOR_P2 = (34, 153, 210)  # Amber
+        
+        for track_id, box in player_dict.items():
+            x1, y1, x2, y2 = map(int, box)
+            color = COLOR_P1 if track_id == 1 else COLOR_P2
+            
+            # Draw a thinner, more precise box
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 1)
+            
+            # Label background (small tag)
+            label = f"P{track_id}"
+            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_DUPLEX, 0.4, 1)
+            cv2.rectangle(frame, (x1, y1 - 20), (x1 + w + 10, y1), color, -1)
+            cv2.putText(frame, label, (x1 + 5, y1 - 7), cv2.FONT_HERSHEY_DUPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+            
+        return frame

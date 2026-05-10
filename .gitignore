@@ -1,0 +1,78 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+.installed.cfg
+lib/
+lib64/
+MANIFEST
+
+# ── Virtual Environments ───────────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ── IDE / Editors ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# ── Linting & Type Checking ────────────────────────────────────────────────────
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ── ML Models (large binary files — download separately) ──────────────────────
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.tflite
+
+# ── Runtime Data Directories (user-generated, ephemeral) ──────────────────────
+uploads/
+outputs/
+processed/
+tracker_stubs/
+
+# ── Notebooks (strip outputs before committing) ───────────────────────────────
+# Uncomment if you prefer to keep clean notebooks:
+# analysis/*.ipynb
+
+# ── Logs & Profiling ──────────────────────────────────────────────────────────
+*.log
+*.prof
+*.lprof
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db

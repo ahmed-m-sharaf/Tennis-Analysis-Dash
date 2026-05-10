@@ -1,195 +1,150 @@
-import dash
-from dash import dcc, html, Input, Output, State, callback_context
-import dash_bootstrap_components as dbc
 import base64
 import os
-import uuid
 import threading
 import time
+import uuid
+from analytics_tabs import build_kinematics, build_trajectory, build_topography
+
+import dash
+import dash_bootstrap_components as dbc
+import plotly.express as px
+import plotly.graph_objects as go
+from dash import Input, Output, State, callback_context, dcc, html
 
 # ── Write CSS to assets/ so Dash auto-serves it ───────────────────────────────
 os.makedirs("assets", exist_ok=True)
 
 CUSTOM_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-body { font-family: 'DM Sans', sans-serif; background: #0d1117; color: #e6edf3; margin: 0; }
+:root {
+    --bg-main: #050505;
+    --accent: #1D9E75;
+    --accent-glow: rgba(29, 158, 117, 0.4);
+    --card-bg: rgba(13, 17, 23, 0.7);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+}
 
-.hero {
-    background: linear-gradient(135deg, #1D9E75 0%, #085041 100%);
-    padding: 2rem 2.5rem 1.5rem;
-    position: relative; overflow: hidden;
+body { 
+    font-family: 'Plus Jakarta Sans', sans-serif; 
+    background: var(--bg-main); 
+    color: var(--text-primary); 
+    margin: 0; 
+    overflow-x: hidden;
 }
-.hero::before {
-    content: ''; position: absolute; right: -60px; top: -60px;
-    width: 280px; height: 280px; border-radius: 50%;
-    background: rgba(255,255,255,0.05);
+
+.sidebar {
+    background: rgba(10,10,10,0.8);
+    border-right: 1px solid var(--glass-border);
+    backdrop-filter: blur(40px);
 }
-.hero-label { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 2px;
-              color: rgba(255,255,255,0.6); text-transform: uppercase; margin-bottom: 4px; }
-.hero-title { font-family: 'Bebas Neue', sans-serif; font-size: 52px;
-              color: #fff; letter-spacing: 3px; line-height: 1; margin: 0; }
-.hero-sub   { font-size: 13px; color: rgba(255,255,255,0.65); margin-top: 6px; }
-.hero-dot   { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-              background: #9FE1CB; margin-right: 6px; vertical-align: middle; }
+
+.hero-label { 
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 3px;
+    color: var(--accent); text-transform: uppercase; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+}
+.hero-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+.hero-sub { font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+
+.upload-container {
+    padding: 2px; background: var(--glass-border); border-radius: 24px;
+    transition: background 0.3s ease;
+}
+.upload-container:hover { background: rgba(29, 158, 117, 0.3); }
 
 .upload-zone {
-    border: 2px dashed #5DCAA5; border-radius: 16px;
-    background: rgba(29,158,117,0.06); padding: 3rem 2rem;
-    text-align: center; cursor: pointer;
-    transition: background .2s, border-color .2s;
+    border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 22px;
+    background: var(--card-bg); padding: 4rem 2rem;
+    text-align: center; cursor: pointer; backdrop-filter: blur(20px);
+    transition: all 0.4s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.upload-zone:hover { background: rgba(29,158,117,0.12); border-color: #1D9E75; }
 .upload-icon {
-    width: 64px; height: 64px; border-radius: 50%; background: #1D9E75;
+    width: 56px; height: 56px; border-radius: 16px; background: var(--accent);
     display: inline-flex; align-items: center; justify-content: center;
-    margin-bottom: 1rem;
+    margin-bottom: 1.5rem; color: #fff; font-size: 24px;
 }
-.upload-title { font-size: 20px; font-weight: 500; color: #9FE1CB; margin-bottom: 4px; }
-.upload-sub   { font-size: 13px; color: #5DCAA5; }
-
-.file-preview {
-    display: flex; align-items: center; gap: 14px;
-    background: #161b22; border: 1px solid #30363d;
-    border-radius: 12px; padding: 12px 16px; margin-top: 12px;
-}
-.file-thumb {
-    width: 48px; height: 36px; border-radius: 8px; background: #1D9E75;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.file-name { font-size: 14px; font-weight: 500; color: #e6edf3; }
-.file-meta { font-size: 12px; color: #8b949e; margin-top: 2px; }
+.upload-title { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 600; color: #fff; }
+.upload-sub { font-size: 13px; color: var(--text-secondary); margin-top: 8px; }
 
 .btn-analyze {
-    background: #1D9E75; color: #fff; border: none; border-radius: 10px;
-    padding: .85rem; font-family: 'DM Sans', sans-serif;
-    font-size: 15px; font-weight: 500; width: 100%; margin-top: 14px;
-    cursor: pointer; transition: opacity .2s, transform .1s;
+    background: var(--accent); color: #fff; border: none; border-radius: 14px;
+    padding: 1rem 1.5rem; font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px; font-weight: 600; width: 100%; margin-top: 20px;
+    cursor: pointer; transition: all 0.5s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.btn-analyze:hover   { opacity: .9; }
-.btn-analyze:active  { transform: scale(.98); }
-.btn-analyze:disabled{ opacity: .4; cursor: not-allowed; }
+.btn-analyze:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(29, 158, 117, 0.4); }
+.btn-analyze:disabled { opacity: 0.3; cursor: not-allowed; }
 
-.proc-card { background: #161b22; border: 1px solid #30363d; border-radius: 14px; overflow: hidden; }
-.proc-header {
-    background: #0d1117; padding: 10px 16px;
-    display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #30363d;
+.pro-card-outer {
+    padding: 1px; background: var(--glass-border); border-radius: 20px;
 }
-.proc-dot { width: 11px; height: 11px; border-radius: 50%; }
-.proc-title-bar { font-family: 'DM Mono', monospace; font-size: 12px; color: #6e7681; margin: 0 auto; }
-.proc-body { padding: 1.25rem; }
-
-.step-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #21262d; }
-.step-row:last-child { border-bottom: none; }
-.step-icon {
-    width: 34px; height: 34px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 17px; flex-shrink: 0;
+.pro-card-inner {
+    background: var(--card-bg); border-radius: 19px; overflow: hidden;
+    backdrop-filter: blur(30px);
+    border: 1px solid var(--glass-border);
 }
-.step-icon.pending { background: #21262d; }
-.step-icon.running { background: #2d2016; animation: pulse 1s ease-in-out infinite; }
-.step-icon.done    { background: #122d22; }
-.step-name { font-size: 14px; font-weight: 500; color: #e6edf3; }
-.step-desc { font-size: 12px; color: #8b949e; margin-top: 2px; }
-.step-badge {
-    font-family: 'DM Mono', monospace; font-size: 11px;
-    padding: 3px 8px; border-radius: 6px; white-space: nowrap;
-}
-.step-badge.pending { background: #21262d; color: #6e7681; }
-.step-badge.running { background: #2d2016; color: #d29922; }
-.step-badge.done    { background: #122d22; color: #3fb950; }
-
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
-
-.prog-track { height: 6px; background: #21262d; border-radius: 99px; overflow: hidden; margin-top: 14px; }
-.prog-fill  { height: 100%; background: #1D9E75; border-radius: 99px; transition: width .5s ease; }
-.prog-label { display: flex; justify-content: space-between; font-size: 12px; color: #8b949e; margin-top: 6px; }
-.prog-pct   { font-family: 'DM Mono', monospace; color: #3fb950; font-weight: 500; }
-
-.log-box {
-    background: #0d1117; border-radius: 10px; padding: 12px 14px;
-    font-family: 'DM Mono', monospace; font-size: 11px; color: #3fb950;
-    height: 110px; overflow-y: auto; margin-top: 12px; line-height: 1.85;
-    border: 1px solid #21262d;
-}
-
-.video-player-wrap {
-    background: #000; border-radius: 14px; overflow: hidden;
-    aspect-ratio: 16/9; position: relative;
-}
-.video-player-wrap video { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 .stat-card {
-    background: #161b22; border: 1px solid #30363d;
-    border-radius: 12px; padding: 1rem; text-align: center;
+    background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border);
+    border-radius: 18px; padding: 1.5rem;
 }
-.stat-label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
-.stat-val   { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: #e6edf3; line-height: 1; }
-.stat-unit  { font-size: 12px; color: #8b949e; margin-left: 2px; }
-.stat-sub   { font-size: 11px; color: #3fb950; margin-top: 3px; }
+.stat-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--text-secondary); letter-spacing: 2px; margin-bottom: 8px; }
+.stat-val { font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 700; color: #fff; }
 
-.player-card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 1rem; }
-.player-avatar {
-    width: 38px; height: 38px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 500; font-size: 13px;
+.step-row { 
+    display: flex; align-items: center; gap: 16px; padding: 14px 20px; 
+    border-bottom: 1px solid var(--glass-border);
 }
-.p1-avatar { background: rgba(29,158,117,.2); color: #5DCAA5; }
-.p2-avatar { background: rgba(186,117,23,.2);  color: #d29922; }
-.bar-label-row { display: flex; justify-content: space-between; font-size: 12px; color: #8b949e; margin-bottom: 3px; }
-.bar-track { height: 5px; background: #21262d; border-radius: 99px; overflow: hidden; margin-bottom: 8px; }
-.bar-p1    { height: 100%; background: #1D9E75; border-radius: 99px; }
-.bar-p2    { height: 100%; background: #d29922; border-radius: 99px; }
+.step-icon {
+    width: 32px; height: 32px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; background: rgba(255,255,255,0.03);
+}
+.step-icon.done { background: rgba(29, 158, 117, 0.1); color: var(--accent); }
+.step-icon.running { animation: pulse 2s infinite; background: rgba(210, 153, 34, 0.1); }
+
+.prog-track { height: 4px; background: rgba(255,255,255,0.05); border-radius: 99px; overflow: hidden; }
+.prog-fill { height: 100%; background: var(--accent); box-shadow: 0 0 15px var(--accent); transition: width 0.8s ease; }
 
 .tab-btn {
-    background: none; border: none; border-bottom: 2px solid transparent;
-    color: #8b949e; font-family: 'DM Sans', sans-serif;
-    font-size: 13px; padding: 8px 16px; cursor: pointer;
-    transition: color .15s; margin-bottom: -1px;
+    background: none; border: none; color: var(--text-secondary); font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px; font-weight: 500; padding: 16px 20px; cursor: pointer; position: relative;
 }
-.tab-btn.active { color: #3fb950; border-bottom-color: #3fb950; font-weight: 500; }
-.tab-border { border-bottom: 1px solid #30363d; margin-bottom: 1rem; }
-
-.section-title {
-    font-family: 'DM Mono', monospace; font-size: 11px;
-    text-transform: uppercase; letter-spacing: 1px; color: #8b949e; margin-bottom: 10px;
-}
-.info-box {
-    background: rgba(88,166,255,.08); border: 1px solid rgba(88,166,255,.3);
-    border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #8b949e;
-}
-.success-box {
-    background: rgba(29,158,117,.1); border: 1px solid rgba(29,158,117,.35);
-    border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #3fb950;
+.tab-btn.active { color: var(--accent); }
+.tab-btn.active::after {
+    content: ''; position: absolute; bottom: 0; left: 20px; right: 20px; height: 2px;
+    background: var(--accent); box-shadow: 0 0 10px var(--accent);
 }
 
-/* ── Dual video layout ── */
-.dual-video-grid {
-    display: grid;
-    grid-template-columns: 1fr 2px 1fr;
-    align-items: start;
-    background: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 16px;
-    overflow: hidden;
-    padding: 16px;
-    gap: 16px;
+.log-box {
+    background: #000; border-radius: 14px; padding: 16px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent);
+    height: 180px; overflow-y: auto; margin-top: 1.5rem; line-height: 1.8;
+    border: 1px solid var(--glass-border);
 }
-.video-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.video-divider { width: 1px; background: #30363d; align-self: stretch; }
-.video-label { display: flex; align-items: center; gap: 7px; padding: 0 2px 2px; }
-.vid-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dot-amber { background: #d29922; }
-.dot-green { background: #3fb950; }
-.vid-label-text {
-    font-family: 'DM Mono', monospace; font-size: 11px;
-    color: #8b949e; text-transform: uppercase; letter-spacing: 1px;
+
+.player-card {
+    background: rgba(255,255,255,0.02); border-radius: 16px; padding: 20px;
+    border: 1px solid var(--glass-border);
 }
-.video-player-wrap {
-    background: #000; border-radius: 10px; overflow: hidden;
-    aspect-ratio: 16/9; position: relative;
+.player-avatar {
+    width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 12px;
 }
-.video-player-wrap video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.p1-avatar { background: rgba(29, 158, 117, 0.2); color: var(--accent); border: 1px solid var(--accent); }
+.p2-avatar { background: rgba(210, 153, 34, 0.2); color: #d29922; border: 1px solid #d29922; }
+
+.bar-track { height: 4px; background: rgba(255,255,255,0.05); border-radius: 99px; margin-top: 6px; margin-bottom: 12px; }
+.bar-p1 { height: 100%; background: var(--accent); border-radius: 99px; }
+.bar-p2 { height: 100%; background: #d29922; border-radius: 99px; }
+.bar-label-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); }
+.bar-label-row span { color: #fff; font-weight: 500; }
+
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
 """
 
 with open("assets/styles.css", "w") as f:
@@ -212,14 +167,13 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 jobs: dict[str, dict] = {}   # job_id → {status, step, pct, log, output_path}
 
 PIPELINE_STEPS = [
-    ("Reading video frames",    "Decoding input into frame buffer",          12),
-    ("Player detection",        "YOLOv8x bounding-box inference",            25),
-    ("Ball tracking",           "YOLOv5 + trajectory interpolation",         38),
-    ("Court line detection",    "CNN keypoint model — 14 points",            50),
-    ("Mini court mapping",      "Pixel-to-metre coordinate conversion",      62),
-    ("Shot detection & speed",  "Ball shot frames + km/h computation",       74),
-    ("Player stats assembly",   "Aggregating DataFrame per frame",           86),
-    ("Rendering output video",  "Drawing overlays, boxes & stats",          100),
+    ("Spatial Decoupling",      "Initializing 2-pass streaming pipeline",      12),
+    ("Vision Engine",          "YOLOv8x Transformer inference",               25),
+    ("Trajectory Kinematics",  "Bézier-smoothed ball tracking",               38),
+    ("Geometric Mapping",      "Spatial keypoint normalization",              50),
+    ("Metre Transformation",   "Perspective-aware coordinate mapping",        62),
+    ("Analytic Synthesis",     "Shot speed & movement aggregation",           85),
+    ("Broadcast Rendering",    "Alpha-blended PIL overlay generation",        100),
 ]
 
 # ── Layout ────────────────────────────────────────────────────────────────────
@@ -233,139 +187,228 @@ app.layout = html.Div([
     # Poll timer (only active during processing)
     dcc.Interval(id="poll-interval", interval=600, n_intervals=0, disabled=True),
 
-    # ── Hero ──────────────────────────────────────────────────────────────────
-    html.Div([
-        html.Div([html.Span(className="hero-dot"), "AI-Powered Analysis"],
-                 className="hero-label"),
-        html.H1("Tennis Vision", className="hero-title"),
-        html.P("Player tracking · Ball detection · Court mapping · Speed analytics",
-               className="hero-sub"),
-    ], className="hero"),
-
-    # ── Main content ──────────────────────────────────────────────────────────
+    # ── Sidebar ──
     html.Div([
 
-        # Stage: UPLOAD ───────────────────────────────────────────────────────
-        html.Div(id="stage-upload", children=[
-            html.P("Upload a match recording to begin computer-vision analysis.",
-                   style={"fontSize": "13px", "color": "#8b949e", "marginBottom": "14px"}),
+        # ── Logo + Brand ──
+        html.Div([
+            html.Img(src="/assets/ITI.png", style={
+                "width": "64px", "height": "64px", "objectFit": "contain",
+                "borderRadius": "12px", "marginBottom": "12px",
+                "boxShadow": "0 0 20px rgba(29,158,117,0.25)"
+            }),
+            html.Div([html.Span(className="hero-dot"), "ANALYTICS ENGINE"], className="hero-label", style={"fontSize":"9px"}),
+            html.H1("T-Board", style={
+                "fontSize": "26px", "fontWeight": "700", "margin": "0",
+                "letterSpacing": "-1px", "fontFamily": "Space Grotesk, sans-serif"
+            }),
+        ], style={"padding":"20px","borderBottom":"1px solid var(--glass-border)","marginBottom":"16px"}),
 
-            dcc.Upload(
-                id="video-upload",
-                children=html.Div([
-                    html.Div("▲", className="upload-icon",
-                             style={"fontSize": "28px", "color": "#fff", "lineHeight": "64px"}),
-                    html.Div("Drop your video here", className="upload-title"),
-                    html.Div("MP4 · AVI · MOV — up to 2 GB", className="upload-sub"),
-                ]),
-                className="upload-zone",
-                accept="video/*",
-                max_size=2 * 1024 * 1024 * 1024,
-            ),
+        # ── System Status ──
+        html.Div([
+            html.Div("SYSTEM STATUS", className="stat-label", style={"padding":"0 20px","marginBottom":"6px"}),
+            html.Div(id="sidebar-status", children=[
+                html.Div([
+                    html.Div(style={"background":"#27c93f","width":"8px","height":"8px",
+                                    "borderRadius":"50%","boxShadow":"0 0 6px #27c93f"}),
+                    html.Span("KERNEL: READY", style={"fontSize":"10px","fontFamily":"JetBrains Mono"})
+                ], style={"display":"flex","alignItems":"center","gap":"8px","padding":"8px 20px"})
+            ]),
+        ], style={"marginBottom":"16px","borderBottom":"1px solid var(--glass-border)","paddingBottom":"16px"}),
 
-            html.Div(id="file-preview-area"),
-            html.Button("Analyze Video", id="start-btn", className="btn-analyze",
-                        disabled=True, n_clicks=0),
-            html.Div(id="upload-error", style={"color": "#f85149", "fontSize": "12px",
-                                               "marginTop": "8px"}),
-        ]),
+        # ── Insight Cards (hidden until analysis done) ──
+        html.Div([
+            html.Div("MATCH INSIGHTS", className="stat-label", style={"padding":"0 20px","marginBottom":"10px"}),
 
-        # Stage: PROCESSING ───────────────────────────────────────────────────
-        html.Div(id="stage-processing", style={"display": "none"}, children=[
+            # Row 1: Rallies + Max Velocity
             html.Div([
                 html.Div([
-                    html.Span(className="proc-dot", style={"background": "#f85149"}),
-                    html.Span(className="proc-dot", style={"background": "#d29922"}),
-                    html.Span(className="proc-dot", style={"background": "#3fb950"}),
-                    html.Span("tennis_vision_pipeline.py", className="proc-title-bar"),
-                ], className="proc-header"),
+                    html.Div("🎾  RALLIES", className="stat-label"),
+                    html.Div("–", id="stat-ball-shots-side",
+                             style={"fontFamily":"Space Grotesk","fontSize":"26px","fontWeight":"700","color":"#fff"})
+                ], className="stat-card", style={"padding":"14px 16px"}),
                 html.Div([
-                    html.Div(id="step-list"),
-                    html.Div(html.Div(id="prog-fill", className="prog-fill",
-                                     style={"width": "0%"}),
-                             className="prog-track"),
+                    html.Div("⚡  MAX VEL", className="stat-label"),
                     html.Div([
-                        html.Span("Pipeline progress"),
-                        html.Span("0%", id="pct-label", className="prog-pct"),
-                    ], className="prog-label"),
-                ], className="proc-body"),
-            ], className="proc-card"),
-            html.Div(id="log-box", className="log-box"),
-        ]),
+                        html.Span("–", id="stat-max-speed-side",
+                                  style={"fontFamily":"Space Grotesk","fontSize":"26px","fontWeight":"700","color":"#1D9E75"}),
+                        html.Span(" km/h", style={"fontSize":"10px","color":"#8b949e"}),
+                    ])
+                ], className="stat-card", style={"padding":"14px 16px"}),
+            ], style={"display":"grid","gridTemplateColumns":"1fr 1fr","gap":"8px","padding":"0 16px","marginBottom":"8px"}),
 
-        # Stage: RESULT ───────────────────────────────────────────────────────
-        html.Div(id="stage-result", style={"display": "none"}, children=[
-            # Side-by-side video players
+            # Row 2: P1 Shots + P2 Shots
             html.Div([
                 html.Div([
-                    html.Div([
-                        html.Span(className="vid-dot dot-amber"),
-                        html.Span("Original", className="vid-label-text"),
-                    ], className="video-label"),
-                    html.Div(
-                        html.Video(id="original-video", controls=True,
-                                   style={"width": "100%", "height": "100%", "objectFit": "contain"}),
-                        className="video-player-wrap",
-                    ),
-                ], className="video-col"),
-                html.Div(className="video-divider"),
+                    html.Div("P1  SHOTS", className="stat-label"),
+                    html.Div("–", id="stat-p1-shots-side",
+                             style={"fontFamily":"Space Grotesk","fontSize":"22px","fontWeight":"700","color":"#1D9E75"})
+                ], className="stat-card", style={"padding":"12px 16px"}),
+                html.Div([
+                    html.Div("P2  SHOTS", className="stat-label"),
+                    html.Div("–", id="stat-p2-shots-side",
+                             style={"fontFamily":"Space Grotesk","fontSize":"22px","fontWeight":"700","color":"#D29922"})
+                ], className="stat-card", style={"padding":"12px 16px"}),
+            ], style={"display":"grid","gridTemplateColumns":"1fr 1fr","gap":"8px","padding":"0 16px","marginBottom":"8px"}),
+
+            # Row 3: Avg Ball Speed (full width)
+            html.Div([
+                html.Div("AVG BALL SPEED", className="stat-label"),
+                html.Div([
+                    html.Span("–", id="stat-avg-speed-side",
+                              style={"fontFamily":"Space Grotesk","fontSize":"22px","fontWeight":"700","color":"#fff"}),
+                    html.Span(" km/h", style={"fontSize":"10px","color":"#8b949e","marginLeft":"4px"}),
+                ])
+            ], className="stat-card", style={"padding":"12px 16px","margin":"0 16px 8px"}),
+
+            # Row 4: Court KPs + Frames
+            html.Div([
+                html.Div([
+                    html.Div("KEYPOINTS", className="stat-label"),
+                    html.Div("–", id="stat-kps-side",
+                             style={"fontFamily":"Space Grotesk","fontSize":"22px","fontWeight":"700","color":"#fff"})
+                ], className="stat-card", style={"padding":"12px 16px"}),
+                html.Div([
+                    html.Div("FRAMES", className="stat-label"),
+                    html.Div("–", id="stat-frames-side",
+                             style={"fontFamily":"Space Grotesk","fontSize":"22px","fontWeight":"700","color":"#fff"})
+                ], className="stat-card", style={"padding":"12px 16px"}),
+            ], style={"display":"grid","gridTemplateColumns":"1fr 1fr","gap":"8px","padding":"0 16px","marginBottom":"8px"}),
+
+            # Row 5: Win zone badge
+            html.Div([
+                html.Div("🏆  TOP TACTICAL ZONE", className="stat-label"),
+                html.Div("DEEP BACKHAND CROSS", id="stat-zone-side",
+                         style={"fontSize":"11px","fontWeight":"600","color":"#1D9E75",
+                                "fontFamily":"JetBrains Mono","marginTop":"4px"})
+            ], className="stat-card", style={"padding":"12px 16px","margin":"0 16px 8px",
+                                              "borderLeft":"3px solid #1D9E75"}),
+
+        ], id="sidebar-stats", style={"display":"none","overflowY":"auto","flex":"1"}),
+
+        # ── Reset button always at bottom ──
+        html.Div([
+            html.Button("↺  Reset Analysis", id="reset-btn", className="btn-analyze",
+                        style={"margin":"16px","width":"calc(100% - 32px)",
+                               "background":"rgba(255,255,255,0.05)","fontSize":"12px"}),
+        ], style={"borderTop":"1px solid var(--glass-border)","paddingTop":"8px","marginTop":"auto"})
+
+    ], className="sidebar", style={
+        "width": "260px", "position": "fixed", "top": "0", "bottom": "0", "left": "0",
+        "background": "rgba(10,10,10,0.9)", "borderRight": "1px solid var(--glass-border)",
+        "backdropFilter": "blur(40px)", "zIndex": "100", "display": "flex",
+        "flexDirection": "column", "overflowY": "hidden"
+    }),
+
+    # ── Main Content Area ──
+    html.Div([
+        
+        # ── Header ──
+        html.Div([
+            html.Div([
+                html.Span("DASHBOARD", style={"color":"var(--text-secondary)"}),
+                html.Span(" / ", style={"margin":"0 8px","opacity":"0.3"}),
+                html.Span("VISION PIPELINE", id="header-breadcrumb", style={"color":"#fff","fontWeight":"500"}),
+            ], style={"fontFamily":"JetBrains Mono","fontSize":"11px"}),
+            html.Div(id="live-clock", style={"fontFamily":"JetBrains Mono","fontSize":"11px","color":"var(--text-secondary)"}),
+            dcc.Interval(id="clock-interval", interval=1000, n_intervals=0)
+        ], style={
+            "height": "60px", "borderBottom": "1px solid var(--glass-border)",
+            "display": "flex", "alignItems": "center", "justifyContent": "space-between", "padding": "0 40px"
+        }),
+
+        # ── Dynamic Content ──
+        html.Div([
+            
+            # Stage: UPLOAD
+            html.Div(id="stage-upload", children=[
                 html.Div([
                     html.Div([
-                        html.Span(className="vid-dot dot-green"),
-                        html.Span("Processed", className="vid-label-text"),
-                    ], className="video-label"),
-                    html.Div(
-                        html.Video(id="result-video", controls=True,
-                                   style={"width": "100%", "height": "100%", "objectFit": "contain"}),
-                        className="video-player-wrap",
-                    ),
-                ], className="video-col"),
-            ], className="dual-video-grid"),
+                        html.Div([html.Span(className="hero-dot"), "INPUT SELECTION"], className="hero-label"),
+                        html.H2("Ready for Acquisition", style={"fontSize":"32px","fontWeight":"700"}),
+                        html.P("Upload match recording for high-fidelity spatial analysis.", className="hero-sub"),
+                    ], style={"marginBottom":"40px"}),
+                    
+                    html.Div([
+                        dcc.Upload(
+                            id="video-upload",
+                            children=html.Div([
+                                html.Div("↗", className="upload-icon"),
+                                html.Div("Load Local Media", className="upload-title"),
+                                html.Div("MP4 / AVI / MOV (Max 2GB)", className="upload-sub"),
+                            ]),
+                            className="upload-zone",
+                            accept="video/*",
+                            max_size=2 * 1024 * 1024 * 1024,
+                        ),
+                    ], className="upload-container"),
+                    
+                    html.Div(id="file-preview-area"),
+                    html.Button("START ANALYTIC ENGINE", id="start-btn", className="btn-analyze", disabled=True),
+                ], style={"maxWidth":"600px","margin":"80px auto"}),
+            ]),
 
-            # Stat cards
-            html.Div([
-                html.Div([html.Div("Ball shots", className="stat-label"),
-                          html.Div([html.Span("0", id="stat-ball-shots", className="stat-val"),
-                                    html.Span(" hits", className="stat-unit")]),
-                          html.Div("detected", className="stat-sub")],
-                         className="stat-card"),
-                html.Div([html.Div("Max ball speed", className="stat-label"),
-                          html.Div([html.Span("0", id="stat-max-speed", className="stat-val"),
-                                    html.Span(" km/h", className="stat-unit")]),
-                          html.Div("overall", className="stat-sub")],
-                         className="stat-card"),
-                html.Div([html.Div("Court keypoints", className="stat-label"),
-                          html.Div([html.Span("0", id="stat-keypoints", className="stat-val"),
-                                    html.Span(" pts", className="stat-unit")]),
-                          html.Div("mapped", className="stat-sub")],
-                         className="stat-card"),
-                html.Div([html.Div("Frames", className="stat-label"),
-                          html.Div(html.Span("0", id="stat-frames", className="stat-val")),
-                          html.Div("processed", className="stat-sub")],
-                         className="stat-card"),
-            ], style={"display": "grid", "gridTemplateColumns": "repeat(4,1fr)",
-                      "gap": "10px", "marginTop": "1.25rem"}),
+            # Stage: PROCESSING
+            html.Div(id="stage-processing", style={"display":"none"}, children=[
+                html.Div([
+                    html.Div([
+                        html.Div("NEURAL PIPELINE ACTIVE", className="hero-label"),
+                        html.H2("Synthesizing Vision Data", style={"fontSize":"32px","fontWeight":"700"}),
+                    ], style={"marginBottom":"30px"}),
+                    
+                    html.Div([
+                        html.Div(id="step-list"),
+                        html.Div(className="prog-track", children=html.Div(id="prog-fill", className="prog-fill", style={"width":"0%"})),
+                        html.Div([
+                            html.Span("TOTAL COMPLETION"),
+                            html.Span("0%", id="pct-label"),
+                        ], style={"display":"flex","justifyContent":"space-between","fontSize":"12px","fontFamily":"JetBrains Mono","marginTop":"10px"}),
+                    ], className="pro-card-outer", style={"padding":"24px"}),
+                    
+                    html.Div(id="log-box", className="log-box"),
+                ], style={"maxWidth":"800px","margin":"40px auto"}),
+            ]),
 
-            # Tabs
-            html.Div([
-                html.Button("Players", id="tab-players", className="tab-btn active", n_clicks=0),
-                html.Button("Ball",    id="tab-ball",    className="tab-btn",        n_clicks=0),
-                html.Button("Court",   id="tab-court",   className="tab-btn",        n_clicks=0),
-            ], className="tab-border", style={"display": "flex", "marginTop": "1.25rem"}),
+            # Stage: RESULT
+            html.Div(id="stage-result", style={"display":"none"}, children=[
+                # Dual Video Grid
+                html.Div([
+                    # Left: Original
+                    html.Div([
+                        html.Div([
+                            html.Span("RAW FEED", className="stat-label", style={"margin":"0"}),
+                            html.Span("01", style={"fontFamily":"JetBrains Mono","opacity":"0.3"}),
+                        ], style={"display":"flex","justifyContent":"space-between","padding":"12px 20px","borderBottom":"1px solid var(--glass-border)"}),
+                        html.Video(id="original-video", controls=True, style={"width":"100%","borderRadius":"0 0 16px 16px"}),
+                    ], className="pro-card-inner"),
+                    
+                    # Right: Analyzed
+                    html.Div([
+                        html.Div([
+                            html.Span("ANALYTIC OVERLAY", className="stat-label", style={"margin":"0","color":"var(--accent)"}),
+                            html.Span("02", style={"fontFamily":"JetBrains Mono","opacity":"0.3"}),
+                        ], style={"display":"flex","justifyContent":"space-between","padding":"12px 20px","borderBottom":"1px solid var(--glass-border)"}),
+                        html.Video(id="result-video", controls=True, style={"width":"100%","borderRadius":"0 0 16px 16px"}),
+                    ], className="pro-card-inner"),
+                ], style={"display":"grid","gridTemplateColumns":"1fr 1fr","gap":"20px","marginBottom":"30px"}),
 
-            html.Div(id="tab-content"),
+                # Metrics Grid
+                html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Button("KINEMATICS", id="tab-players", className="tab-btn active"),
+                            html.Button("TRAJECTORY", id="tab-ball", className="tab-btn"),
+                            html.Button("TOPOGRAPHY", id="tab-court", className="tab-btn"),
+                        ], style={"display":"flex","gap":"10px","padding":"0 20px","borderBottom":"1px solid var(--glass-border)"}),
+                        html.Div(id="tab-content", style={"padding":"24px"}),
+                    ], className="pro-card-inner"),
+                ], className="pro-card-outer"),
+            ]),
 
-            html.Button("↺ Analyze another video", id="reset-btn",
-                        style={"marginTop": "1.5rem", "background": "none",
-                               "border": "1px solid #30363d", "color": "#8b949e",
-                               "borderRadius": "8px", "padding": "8px 16px",
-                               "cursor": "pointer", "fontFamily": "'DM Sans', sans-serif",
-                               "fontSize": "13px"},
-                        n_clicks=0),
-        ]),
+        ], style={"padding":"40px"})
 
-    ], style={"padding": "1.5rem"}),
-], style={"minHeight": "100vh"})
+    ], style={"marginLeft":"260px","minHeight":"100vh"})
+])
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -376,7 +419,7 @@ def format_bytes(b):
 
 
 def run_pipeline(job_id: str, input_path: str, output_path: str):
-    """Simulates (or calls real) pipeline in a background thread."""
+    """Runs mock progress animation then invokes the real pipeline."""
     log_lines = [
         ("info",  "[init] Loading models from /models/"),
         ("",      f"[read] Decoding video → {input_path}"),
@@ -396,33 +439,43 @@ def run_pipeline(job_id: str, input_path: str, output_path: str):
         ("",      f"[save] Writing output → {output_path}"),
         ("info",  "[done] Pipeline complete ✓"),
     ]
+    # Animate up to step 5 (Analytic Synthesis = 85%) — hold last step for real work
+    MOCK_STEPS = PIPELINE_STEPS[:-1]
     log_per_step = max(1, len(log_lines) // len(PIPELINE_STEPS))
 
-    for idx, (step_name, step_desc, pct) in enumerate(PIPELINE_STEPS):
-        jobs[job_id]["step"] = idx
+    for idx, (step_name, step_desc, pct) in enumerate(MOCK_STEPS):
+        jobs[job_id]["step"]   = idx
         jobs[job_id]["status"] = "running"
-        jobs[job_id]["pct"] = pct - 12   # start of this step
+        jobs[job_id]["pct"]    = max(0, pct - 12)
 
-        # Drip logs for this step
         start = idx * log_per_step
         for li in range(start, min(start + log_per_step, len(log_lines))):
-            time.sleep(0.35)
+            time.sleep(0.3)
             cls, txt = log_lines[li]
             jobs[job_id]["log"].append((cls, txt))
 
-        time.sleep(0.6)
+        time.sleep(0.5)
         jobs[job_id]["pct"] = pct
 
-        # ── Real pipeline call would go here ──────────────────────────────
-        # (This is a mock progress bar loop)
+    # ── Activate final step: "Broadcast Rendering" ────────────────────────────
+    final_idx = len(PIPELINE_STEPS) - 1
+    jobs[job_id]["step"]   = final_idx
+    jobs[job_id]["status"] = "running"
+    jobs[job_id]["pct"]    = 88   # hold at 88% while real work runs
+    jobs[job_id]["log"].append(("info", "[render] Broadcast rendering — PIL overlay pass…"))
 
-    # Actually process the video
+    # ── REAL PIPELINE ──────────────────────────────────────────────────────────
     from process_tennis_video import process_tennis_video
     stats = process_tennis_video(input_path, output_path)
 
-    jobs[job_id]["status"] = "done"
+    # ── Mark complete ──────────────────────────────────────────────────────────
+    jobs[job_id]["pct"]         = 100
+    jobs[job_id]["step"]        = final_idx
+    jobs[job_id]["status"]      = "done"
     jobs[job_id]["output_path"] = output_path
-    jobs[job_id]["stats"] = stats
+    jobs[job_id]["stats"]       = stats
+    jobs[job_id]["log"].append(("info", "[done] Pipeline complete ✓"))
+
 
 
 # ── Callback: handle upload ───────────────────────────────────────────────────
@@ -432,10 +485,9 @@ def run_pipeline(job_id: str, input_path: str, output_path: str):
     Output("job-id-store", "data"),
     Input("video-upload", "contents"),
     State("video-upload", "filename"),
-    State("video-upload", "file_size"),
     prevent_initial_call=True,
 )
-def handle_upload(contents, filename, file_size):
+def handle_upload(contents, filename):
     if not contents:
         return "", True, None
 
@@ -462,8 +514,8 @@ def handle_upload(contents, filename, file_size):
 
 # ── Callback: start processing ────────────────────────────────────────────────
 @app.callback(
-    Output("stage-store", "data"),
-    Output("poll-interval", "disabled"),
+    Output("stage-store", "data", allow_duplicate=True),
+    Output("poll-interval", "disabled", allow_duplicate=True),
     Input("start-btn", "n_clicks"),
     State("job-id-store", "data"),
     State("video-upload", "filename"),
@@ -491,9 +543,9 @@ def start_processing(n_clicks, job_id, filename):
 
 # ── Callback: poll pipeline state ─────────────────────────────────────────────
 @app.callback(
-    Output("stage-upload",     "style"),
-    Output("stage-processing", "style"),
-    Output("stage-result",     "style"),
+    Output("stage-upload",     "style", allow_duplicate=True),
+    Output("stage-processing", "style", allow_duplicate=True),
+    Output("stage-result",     "style", allow_duplicate=True),
     Output("step-list",        "children"),
     Output("prog-fill",        "style"),
     Output("pct-label",        "children"),
@@ -503,10 +555,15 @@ def start_processing(n_clicks, job_id, filename):
     Output("result-video",     "src"),
     Output("original-video",   "src"),
     Output("stats-store",      "data"),
-    Output("stat-ball-shots",  "children"),
-    Output("stat-max-speed",   "children"),
-    Output("stat-keypoints",   "children"),
-    Output("stat-frames",      "children"),
+    Output("stat-ball-shots-side",  "children"),
+    Output("stat-max-speed-side",   "children"),
+    Output("stat-p1-shots-side",    "children"),
+    Output("stat-p2-shots-side",    "children"),
+    Output("stat-avg-speed-side",   "children"),
+    Output("stat-kps-side",         "children"),
+    Output("stat-frames-side",      "children"),
+    Output("sidebar-stats",    "style"),
+    Output("sidebar-status",   "children"),
     Input("poll-interval",     "n_intervals"),
     State("stage-store",       "data"),
     State("job-id-store",      "data"),
@@ -517,8 +574,19 @@ def poll_state(n, stage, job_id):
     hide  = {"display": "none"}
     blank = dash.no_update
 
+    status_ready = html.Div([
+        html.Div(className="proc-dot", style={"background":"#27c93f","width":"8px","height":"8px"}),
+        html.Span("KERNEL: READY", style={"fontSize":"10px","fontFamily":"JetBrains Mono"})
+    ], style={"display":"flex","alignItems":"center","gap":"8px","padding":"10px 20px"})
+
+    status_processing = html.Div([
+        html.Div(className="proc-dot", style={"background":"#ffbd2e","width":"8px","height":"8px","animation":"pulse 1s infinite"}),
+        html.Span("KERNEL: ACTIVE", style={"fontSize":"10px","fontFamily":"JetBrains Mono"})
+    ], style={"display":"flex","alignItems":"center","gap":"8px","padding":"10px 20px"})
+
     if stage == "upload":
-        return show, hide, hide, [], {"width": "0%"}, "0%", [], True, blank, "", "", {}, "0", "0", "0", "0"
+        nu = dash.no_update
+        return show, hide, hide, [], {"width": "0%"}, "0%", [], True, "upload", "", "", {}, "–", "–", "–", "–", "–", "–", "–", hide, status_ready
 
     if stage == "processing" and job_id and job_id in jobs:
         job = jobs[job_id]
@@ -528,72 +596,76 @@ def poll_state(n, stage, job_id):
         step_rows = []
         for si, (sname, sdesc, _) in enumerate(PIPELINE_STEPS):
             if si < job["step"]:
-                cls, badge_cls, badge_txt = "done", "done", "done"
+                cls, badge_txt = "done", "DONE"
             elif si == job["step"] and job["status"] == "running":
-                cls, badge_cls, badge_txt = "running", "running", "running"
+                cls, badge_txt = "running", "ACTIVE"
             else:
-                cls, badge_cls, badge_txt = "pending", "pending", "waiting"
+                cls, badge_txt = "pending", "WAIT"
 
-            icons = ["📹","🧍","🎾","🏟️","🗺️","⚡","📊","🎬"]
+            icons = ["📹","🧍","🎾","🏟️","🗺️","⚡","📊"]
             step_rows.append(html.Div([
                 html.Div(icons[si], className=f"step-icon {cls}"),
                 html.Div([
-                    html.Div(sname, className="step-name"),
-                    html.Div(sdesc, className="step-desc"),
+                    html.Div(sname, className="step-name", style={"fontSize":"13px"}),
+                    html.Div(sdesc, className="step-desc", style={"fontSize":"10px"}),
                 ], style={"flex": "1"}),
-                html.Span(badge_txt, className=f"step-badge {badge_cls}"),
-            ], className="step-row"))
+                html.Span(badge_txt, style={"fontSize":"9px","fontFamily":"JetBrains Mono","opacity":"0.5"}),
+            ], className="step-row", style={"padding":"10px 0"}))
 
         # Build log
-        log_children = []
-        for cls, txt in job["log"][-30:]:
-            style = {}
-            if cls == "warn": style = {"color": "#d29922"}
-            elif cls == "info": style = {"color": "#58a6ff"}
-            log_children.append(html.Div(txt, style=style))
+        log_children = [html.Div(f"> {txt}", style={"color": "#1D9E75" if cls=="info" else "#d29922"}) for cls, txt in job["log"][-20:]]
 
         if job["status"] == "done":
-            # Encode output video as data URI for the player
             output_path = job["output_path"]
             video_src = ""
             if output_path and os.path.exists(output_path):
                 with open(output_path, "rb") as f:
                     data = base64.b64encode(f.read()).decode()
-                ext = os.path.splitext(output_path)[1].lstrip(".")
-                mime = {"mp4": "video/mp4", "avi": "video/avi",
-                        "mov": "video/quicktime", "webm": "video/webm"}.get(ext, "video/mp4")
-                video_src = f"data:{mime};base64,{data}"
+                video_src = f"data:video/mp4;base64,{data}"
 
             orig_src = ""
             input_path = job.get("input_path", "")
             if input_path and os.path.exists(input_path):
                 with open(input_path, "rb") as f:
                     orig_data = base64.b64encode(f.read()).decode()
-                orig_ext = os.path.splitext(input_path)[1].lstrip(".")
-                orig_mime = {"mp4": "video/mp4", "avi": "video/avi",
-                             "mov": "video/quicktime"}.get(orig_ext, "video/mp4")
-                orig_src = f"data:{orig_mime};base64,{orig_data}"
+                orig_src = f"data:video/mp4;base64,{orig_data}"
 
             stats = job.get("stats", {})
+            ball_shots  = str(stats.get("ball_shots", 0))
+            max_spd     = f"{stats.get('max_ball_speed', 0):.0f}"
+            p1_shots    = str(stats.get("player_1_shots", 0))
+            p2_shots    = str(stats.get("player_2_shots", 0))
+            avg_spd     = f"{stats.get('avg_ball_speed', 0):.0f}"
+            kps         = str(stats.get("court_keypoints", 14))
+            frames      = str(stats.get("total_frames", "—"))
             return (hide, hide, show,
                     step_rows, {"width": "100%"}, "100%",
                     log_children, True, "result", video_src, orig_src,
-                    stats, str(stats.get("ball_shots", 0)),
-                    f"{stats.get('max_ball_speed', 0):.0f}",
-                    str(stats.get("court_keypoints", 0)),
-                    str(stats.get("frames", 0)))
+                    stats, ball_shots, max_spd, p1_shots, p2_shots,
+                    avg_spd, kps, frames,
+                    {"display":"block","overflowY":"auto","flex":"1"}, status_ready)
 
         return (hide, show, hide,
                 step_rows, {"width": f"{pct}%"}, f"{pct}%",
-                log_children, False, blank, "", "", blank, blank, blank, blank, blank)
+                log_children, False, "processing", "", "", {}, "–", "–", "–", "–", "–", "–", "–", hide, status_processing)
 
     if stage == "result":
-        return hide, hide, show, [], {"width": "100%"}, "100%", [], True, blank, blank, blank, blank, blank, blank, blank, blank
+        nu = dash.no_update
+        return hide, hide, show, nu, nu, nu, nu, True, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, nu, {"display":"block","overflowY":"auto","flex":"1"}, status_ready
 
-    return show, hide, hide, [], {"width": "0%"}, "0%", [], True, blank, "", "", blank, blank, blank, blank, blank
+    return show, hide, hide, [], {"width": "0%"}, "0%", [], True, "upload", "", "", {}, "–", "–", "–", "–", "–", "–", "–", hide, status_ready
 
 
-# ── Callback: tab switching ───────────────────────────────────────────────────
+# ── Callback: live clock ───────────────────────────────────────────────────────
+@app.callback(
+    Output("live-clock", "children"),
+    Input("clock-interval", "n_intervals")
+)
+def update_clock(n):
+    return time.strftime("%H:%M:%S | %d %b %Y")
+
+
+# ── Callback: tab switching ────────────────────────────────────────────────────
 @app.callback(
     Output("tab-content",  "children"),
     Output("tab-players",  "className"),
@@ -602,7 +674,8 @@ def poll_state(n, stage, job_id):
     Input("tab-players",   "n_clicks"),
     Input("tab-ball",      "n_clicks"),
     Input("tab-court",     "n_clicks"),
-    Input("stats-store",   "data")
+    Input("stats-store",   "data"),
+    prevent_initial_call=False,
 )
 def switch_tab(p, b, c, stats):
     stats = stats or {}
@@ -611,89 +684,41 @@ def switch_tab(p, b, c, stats):
         active = "players"
     else:
         prop_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        if prop_id == "stats-store":
-            active = "players"
-        else:
-            active = prop_id.replace("tab-", "")
+        active = "players" if prop_id == "stats-store" else prop_id.replace("tab-", "")
 
     def cls(t): return "tab-btn active" if t == active else "tab-btn"
 
-    if active == "players":
-        p1_shot_spd = f"{stats.get('player_1_avg_shot_speed', 0):.0f}"
-        p1_mov_spd  = f"{stats.get('player_1_avg_player_speed', 0):.1f}"
-        p1_shots    = str(stats.get('player_1_shots', 0))
-        
-        p2_shot_spd = f"{stats.get('player_2_avg_shot_speed', 0):.0f}"
-        p2_mov_spd  = f"{stats.get('player_2_avg_player_speed', 0):.1f}"
-        p2_shots    = str(stats.get('player_2_shots', 0))
+    def _err(e):
+        return html.Div([
+            html.Div("⚠ Render Error", style={"color":"#ff5555","fontFamily":"JetBrains Mono",
+                                              "fontSize":"12px","marginBottom":"8px"}),
+            html.Pre(str(e), style={"color":"#8b949e","fontSize":"11px","whiteSpace":"pre-wrap"})
+        ], style={"padding":"24px","background":"rgba(255,0,0,0.05)",
+                  "borderRadius":"12px","border":"1px solid rgba(255,85,85,0.2)"})
 
-        content = html.Div([
-            html.Div([
-                # Player 1
-                html.Div([
-                    html.Div([
-                        html.Div("P1", className="player-avatar p1-avatar"),
-                        html.Div([html.Div("Player 1", style={"fontSize":"14px","fontWeight":"500"}),
-                                  html.Div("Near baseline", style={"fontSize":"11px","color":"#8b949e"})]),
-                    ], style={"display":"flex","alignItems":"center","gap":"10px","marginBottom":"12px"}),
-                    html.Div([html.Div(["Avg shot speed", html.Span(f"{p1_shot_spd} km/h")], className="bar-label-row"),
-                              html.Div(html.Div(className="bar-p1", style={"width":"75%"}), className="bar-track")]),
-                    html.Div([html.Div(["Avg move speed", html.Span(f"{p1_mov_spd} km/h")], className="bar-label-row"),
-                              html.Div(html.Div(className="bar-p1", style={"width":"46%"}), className="bar-track")]),
-                    html.Div([html.Div(["Shots taken", html.Span(p1_shots)], className="bar-label-row"),
-                              html.Div(html.Div(className="bar-p1", style={"width":"51%"}), className="bar-track")]),
-                ], className="player-card"),
-                # Player 2
-                html.Div([
-                    html.Div([
-                        html.Div("P2", className="player-avatar p2-avatar"),
-                        html.Div([html.Div("Player 2", style={"fontSize":"14px","fontWeight":"500"}),
-                                  html.Div("Far baseline", style={"fontSize":"11px","color":"#8b949e"})]),
-                    ], style={"display":"flex","alignItems":"center","gap":"10px","marginBottom":"12px"}),
-                    html.Div([html.Div(["Avg shot speed", html.Span(f"{p2_shot_spd} km/h")], className="bar-label-row"),
-                              html.Div(html.Div(className="bar-p2", style={"width":"65%"}), className="bar-track")]),
-                    html.Div([html.Div(["Avg move speed", html.Span(f"{p2_mov_spd} km/h")], className="bar-label-row"),
-                              html.Div(html.Div(className="bar-p2", style={"width":"57%"}), className="bar-track")]),
-                    html.Div([html.Div(["Shots taken", html.Span(p2_shots)], className="bar-label-row"),
-                              html.Div(html.Div(className="bar-p2", style={"width":"49%"}), className="bar-track")]),
-                ], className="player-card"),
-            ], style={"display":"grid","gridTemplateColumns":"1fr 1fr","gap":"12px"}),
-        ])
-
-    elif active == "ball":
-        min_spd = f"{stats.get('min_ball_speed', 0):.0f}"
-        avg_spd = f"{stats.get('avg_ball_speed', 0):.0f}"
-        max_spd = f"{stats.get('max_ball_speed', 0):.0f}"
-        shots = str(stats.get('ball_shots', 0))
-
-        content = html.Div([
-            html.Div("Ball trajectory analysis", className="section-title"),
-            html.Div([
-                html.Div([html.Div("Min speed", className="stat-label"),
-                          html.Div([html.Span(min_spd,  className="stat-val"), html.Span(" km/h", className="stat-unit")])],
-                         className="stat-card"),
-                html.Div([html.Div("Avg speed", className="stat-label"),
-                          html.Div([html.Span(avg_spd, className="stat-val"), html.Span(" km/h", className="stat-unit")])],
-                         className="stat-card"),
-                html.Div([html.Div("Max speed", className="stat-label"),
-                          html.Div([html.Span(max_spd, className="stat-val"), html.Span(" km/h", className="stat-unit")])],
-                         className="stat-card"),
-            ], style={"display":"grid","gridTemplateColumns":"repeat(3,1fr)","gap":"10px","marginBottom":"10px"}),
-            html.Div(f"Ball trajectory interpolated across {shots} shot segments using YOLOv5 ball detector "
-                     "with position interpolation to fill missing frames.",
-                     className="info-box"),
-        ])
-
-    else:  # court
-        kps = str(stats.get('court_keypoints', 14))
-        content = html.Div([
-            html.Div("Court detection", className="section-title"),
-            html.Div(f"{kps} court keypoints detected via CNN. Double line width used for pixel-to-metre "
-                     "conversion. Mini court overlay active in output frames.",
-                     className="success-box"),
-        ])
+    try:
+        if active == "players":
+            content = build_kinematics(stats)
+        elif active == "ball":
+            content = build_trajectory(stats)
+        else:
+            content = build_topography(stats)
+    except Exception as e:
+        content = _err(e)
 
     return content, cls("players"), cls("ball"), cls("court")
+
+
+# ── Callback: topography filters ──────────────────────────────────────────────
+@app.callback(
+    Output("tab-content", "children", allow_duplicate=True),
+    Input("topo-shot-filter",    "value"),
+    Input("topo-outcome-filter", "value"),
+    State("stats-store", "data"),
+    prevent_initial_call=True,
+)
+def topo_filter(shot_f, outcome_f, stats):
+    return build_topography(stats or {}, shot_f or "All", outcome_f or "All")
 
 
 # ── Callback: reset ────────────────────────────────────────────────────────────
@@ -715,4 +740,4 @@ def reset(n):
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True, port=8050)
+    app.run(debug=True, port=8080)

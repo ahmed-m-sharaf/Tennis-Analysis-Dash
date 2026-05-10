@@ -1,5 +1,6 @@
 import cv2
 
+
 def read_video(video_path):
     cap = cv2.VideoCapture(video_path)
     frames = []
@@ -11,6 +12,15 @@ def read_video(video_path):
     cap.release()
     return frames
 
+def get_video_frames_generator(video_path):
+    cap = cv2.VideoCapture(video_path)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        yield frame
+    cap.release()
+
 '''
 def save_video(frames, output_path, fps=24):
     height, width, _ = frames[0].shape
@@ -20,19 +30,17 @@ def save_video(frames, output_path, fps=24):
         out.write(frame)
     out.release()
 '''
-def save_video(frames, output_path, fps=24):
-    import cv2
-
-    height, width, _ = frames[0].shape
+def save_video(frames_generator, output_path, fps=24):
+    out = None
     fourcc = cv2.VideoWriter_fourcc(*'vp80')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-    for frame in frames:
+    for frame in frames_generator:
+        if out is None:
+            height, width, _ = frame.shape
+            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
         frame = frame.astype('uint8')
-
-        if frame.shape[:2] != (height, width):
-            frame = cv2.resize(frame, (width, height))
-
         out.write(frame)
 
-    out.release()
+    if out:
+        out.release()
