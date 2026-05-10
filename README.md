@@ -16,13 +16,16 @@ Real-time player tracking · Ball kinematics · Tactical court mapping
 
 ---
 
-## 📸 Preview
+## 📸 Dashboard Screenshots
 
-> Upload any tennis match video and get a full broadcast-quality analytics report in seconds.
+### Vision Pipeline — Dual Video + Sidebar Insights
+![T-Board — Vision Pipeline](assets/1.png)
 
-| Processing Pipeline | Analytics Dashboard |
-|---|---|
-| 7-step live progress bar | Kinematics · Trajectory · Topography |
+### Kinematics — Speed Curves, Distance & Radar
+![T-Board — Kinematics Analytics](assets/2.png)
+
+### Topography — Shot Landing & Court Coverage Heatmap
+![T-Board — Topography Analytics](assets/3.png)
 
 ---
 
@@ -149,14 +152,37 @@ python app.py
 ## 📦 Pipeline Steps
 
 ```
-[1] Spatial Decoupling   → 2-pass pipeline init, frame buffering
-[2] Vision Engine        → YOLOv8x player detection (all frames)
+[1] Spatial Decoupling    → 2-pass pipeline init, frame buffering
+[2] Vision Engine         → YOLOv8x player detection (all frames)
 [3] Trajectory Kinematics → Ball detection + Bézier interpolation
-[4] Geometric Mapping    → 14-keypoint court normalisation
-[5] Metre Transformation → Pixel → metre coordinate conversion
-[6] Analytic Synthesis   → Speed / distance / shot statistics
-[7] Broadcast Rendering  → PIL overlay + OpenCV video encode
+[4] Geometric Mapping     → 14-keypoint court normalisation
+[5] Metre Transformation  → Pixel → metre coordinate conversion
+[6] Analytic Synthesis    → Speed / distance / shot statistics
+[7] Broadcast Rendering   → PIL overlay + OpenCV video encode
 ```
+
+---
+
+## 👥 Team
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/ahmednashatnoaman-svg">
+        <img src="https://github.com/ahmednashatnoaman.png" width="80" style="border-radius:50%"/><br/>
+        <b>Ahmed Nashat Noaman</b>
+      </a><br/>
+      <a href="https://github.com/ahmednashatnoaman">@ahmednashatnoaman</a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Mostafa-El-gelany">
+        <img src="https://github.com/Mostafa-El-gelany.png" width="80" style="border-radius:50%"/><br/>
+        <b>Mostafa El-Gelany</b>
+      </a><br/>
+      <a href="https://github.com/Mostafa-El-gelany">@Mostafa-El-gelany</a>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -176,4 +202,4 @@ ruff check . --fix
 
 ## 📄 License
 
-MIT © 2025 Ahmed M. Sharaf — ITI Data Science Graduate
+MIT © 2025 Ahmed Nashat Noaman & Mostafa El-Gelany — ITI Data Science Graduates
