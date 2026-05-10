@@ -168,7 +168,7 @@ python app.py
 <table>
   <tr>
     <td align="center">
-      <a href="https://github.com/ahmednashatnoaman-svg">
+      <a href="https://github.com/ahmednashatnoaman">
         <img src="https://github.com/ahmednashatnoaman.png" width="80" style="border-radius:50%"/><br/>
         <b>Ahmed Nashat Noaman</b>
       </a><br/>
@@ -180,6 +180,13 @@ python app.py
         <b>Mostafa El-Gelany</b>
       </a><br/>
       <a href="https://github.com/Mostafa-El-gelany">@Mostafa-El-gelany</a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/ahmed-m-sharaf">
+        <img src="https://github.com/ahmed-m-sharaf.png" width="80" style="border-radius:50%"/><br/>
+        <b>Ahmed Sharaf</b>
+      </a><br/>
+      <a href="https://github.com/ahmed-m-sharaf">@ahmed-m-sharaf</a>
     </td>
   </tr>
 </table>
