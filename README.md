@@ -209,4 +209,4 @@ ruff check . --fix
 
 ## 📄 License
 
-MIT © 2025 Ahmed Nashat Noaman & Mostafa El-Gelany — ITI Data Science Graduates
+MIT © 2026
